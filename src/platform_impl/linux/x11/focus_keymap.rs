@@ -217,17 +217,18 @@ mod tests {
             _ => None,
         };
         for source in [CHILD, GRANDCHILD] {
-            let mut state = FocusKeymap::default();
-            state.focus_in(A);
-            state.keymap_notify(down(N));
-            // The native child selects KeyPress, while XI2 focus remains on A.
-            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(true));
-            // An unrelated release still cannot clear the parent's held provenance.
-            assert_eq!(state.key_event_from(A, B, N, false, 3, parent), None);
-            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(true));
-            assert_eq!(state.key_event_from(A, source, N, false, 3, parent), Some(false));
-            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(false));
-            assert_eq!(state.key_event_from(A, source, Y, true, 3, parent), Some(false));
+            for key in [N, Y] {
+                let mut state = FocusKeymap::default();
+                state.focus_in(A);
+                state.keymap_notify(down(key));
+                // The native child selects KeyPress, while XI2 focus remains on A.
+                assert_eq!(state.key_event_from(A, source, key, true, 3, parent), Some(true));
+                // An unrelated release still cannot clear the parent's held provenance.
+                assert_eq!(state.key_event_from(A, B, key, false, 3, parent), None);
+                assert_eq!(state.key_event_from(A, source, key, true, 3, parent), Some(true));
+                assert_eq!(state.key_event_from(A, source, key, false, 3, parent), Some(false));
+                assert_eq!(state.key_event_from(A, source, key, true, 3, parent), Some(false));
+            }
         }
     }
 
