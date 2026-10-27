@@ -56,10 +56,20 @@ impl FocusKeymap {
     pub fn key_event_from(
         &mut self,
         active: u32,
-        source: u32,
+        mut source: u32,
         keycode: u32,
         pressed: bool,
+        window_count: usize,
+        mut parent: impl FnMut(u32) -> Option<u32>,
     ) -> Option<bool> {
+        // A native child can receive keys while its ancestor keeps keyboard focus.
+        // Bound the walk by tracked windows so a stale/cyclic relationship is inert.
+        for _ in 0..window_count {
+            if source == active {
+                break;
+            }
+            source = parent(source)?;
+        }
         if active != source {
             return None;
         }
@@ -180,8 +190,8 @@ mod tests {
         let mut state = FocusKeymap::default();
         state.focus_in(A);
         state.keymap_notify(down(N));
-        assert_eq!(state.key_event_from(A, B, N, false), None);
-        assert_eq!(state.key_event_from(A, A, N, true), Some(true));
+        assert_eq!(state.key_event_from(A, B, N, false, 0, |_| None), None);
+        assert_eq!(state.key_event_from(A, A, N, true, 0, |_| None), Some(true));
     }
 
     #[test]
@@ -192,9 +202,42 @@ mod tests {
         state.focus_out(A);
         state.focus_in(B);
         state.keymap_notify([0; 32]);
-        assert_eq!(state.key_event_from(B, A, N, true), None);
-        assert_eq!(state.key_event_from(B, A, N, false), None);
-        assert_eq!(state.key_event_from(B, B, N, true), Some(false));
+        assert_eq!(state.key_event_from(B, A, N, true, 0, |_| None), None);
+        assert_eq!(state.key_event_from(B, A, N, false, 0, |_| None), None);
+        assert_eq!(state.key_event_from(B, B, N, true, 0, |_| None), Some(false));
+    }
+
+    #[test]
+    fn a_childs_keys_are_delivered_to_its_focused_parent() {
+        const CHILD: u32 = 30;
+        const GRANDCHILD: u32 = 40;
+        let parent = |window| match window {
+            CHILD => Some(A),
+            GRANDCHILD => Some(CHILD),
+            _ => None,
+        };
+        for source in [CHILD, GRANDCHILD] {
+            let mut state = FocusKeymap::default();
+            state.focus_in(A);
+            state.keymap_notify(down(N));
+            // The native child selects KeyPress, while XI2 focus remains on A.
+            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(true));
+            // An unrelated release still cannot clear the parent's held provenance.
+            assert_eq!(state.key_event_from(A, B, N, false, 3, parent), None);
+            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(true));
+            assert_eq!(state.key_event_from(A, source, N, false, 3, parent), Some(false));
+            assert_eq!(state.key_event_from(A, source, N, true, 3, parent), Some(false));
+            assert_eq!(state.key_event_from(A, source, Y, true, 3, parent), Some(false));
+        }
+    }
+
+    #[test]
+    fn stale_parent_cycles_cannot_retarget_or_hang_key_delivery() {
+        let mut state = FocusKeymap::default();
+        state.focus_in(A);
+        state.keymap_notify(down(N));
+        assert_eq!(state.key_event_from(A, B, N, false, 2, |_| Some(B)), None);
+        assert_eq!(state.key_event_from(A, A, N, true, 2, |_| None), Some(true));
     }
 
     #[test]

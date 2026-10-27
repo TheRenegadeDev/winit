@@ -1032,14 +1032,23 @@ impl EventProcessor {
 
         let keycode = xev.keycode as _;
 
-        // XIM can replay an older window's event after focus has moved. It must
-        // neither end the new window's hold nor become a fresh press there.
+        // Accept the focus window's native children, but never retarget an older
+        // unrelated window's XIM replay or release after focus has moved.
+        let windows = wt.windows.borrow();
         let Some(focus_repeat) = self.focus_keymap.key_event_from(
             window,
             xev.window as xproto::Window,
             keycode,
             state == ElementState::Pressed,
+            windows.len(),
+            |source| {
+                windows
+                    .get(&WindowId(source as _))?
+                    .upgrade()
+                    .map(|window| window.parent_window())
+            },
         ) else { return };
+        drop(windows);
 
         // Update state to track key repeats and determine whether this key was a repeat.
         //
@@ -1915,7 +1924,7 @@ impl EventProcessor {
             self.focus_keymap.focus_out(window);
             return;
         }
-        let keymap = util::Keymap::from(keys);
+        let keymap = util::keys::Keymap::from(keys);
         Self::handle_pressed_keys(
             &self.target,
             mkwid(window),
@@ -1930,7 +1939,7 @@ impl EventProcessor {
         target: &RootAEL,
         window_id: crate::window::WindowId,
         state: ElementState,
-        keys: &util::Keymap,
+        keys: &util::keys::Keymap,
         xkb_context: &mut Context,
         callback: &mut F,
     ) where

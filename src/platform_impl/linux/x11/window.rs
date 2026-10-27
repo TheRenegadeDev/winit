@@ -1461,6 +1461,11 @@ impl UnownedWindow {
         self.xwindow as ffi::Window
     }
 
+    pub(super) fn parent_window(&self) -> xproto::Window {
+        // Explicit native parent for child windows, screen root for top-level windows.
+        self.root
+    }
+
     #[inline]
     pub fn set_cursor(&self, cursor: Cursor) {
         match cursor {
