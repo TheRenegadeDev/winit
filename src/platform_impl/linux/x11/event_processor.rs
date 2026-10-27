@@ -217,7 +217,9 @@ impl EventProcessor {
         let event_type = xev.get_type();
 
         // Core KeymapNotify follows FocusIn in server order, even if dispatch is delayed.
-        // Remember that association before XIM filtering, without changing XI2 focus delivery.
+        // The extra core Focus/Enter subscriptions only supply provenance. XI2 keeps
+        // ownership of focus/IME and pointer delivery, so those copies bypass XIM.
+        // Existing KeymapNotify filtering still runs after its provenance is captured.
         match event_type {
             xlib::FocusIn => {
                 let focus: &xlib::XFocusChangeEvent = xev.as_ref();
@@ -229,6 +231,7 @@ impl EventProcessor {
                         self.focus_keymap.cancel_pending();
                     }
                 }
+                return;
             },
             xlib::FocusOut => {
                 let focus: &xlib::XFocusChangeEvent = xev.as_ref();
@@ -239,6 +242,15 @@ impl EventProcessor {
                         self.held_key_press = None;
                     }
                 }
+                return;
+            },
+            xlib::EnterNotify => {
+                let enter: &xlib::XCrossingEvent = xev.as_ref();
+                if enter.send_event == 0 {
+                    // Its following window-less keymap belongs to pointer entry, not focus.
+                    self.focus_keymap.cancel_pending();
+                }
+                return;
             },
             xlib::KeymapNotify => {
                 let keymap: &XKeymapEvent = xev.as_ref();
@@ -1020,6 +1032,15 @@ impl EventProcessor {
 
         let keycode = xev.keycode as _;
 
+        // XIM can replay an older window's event after focus has moved. It must
+        // neither end the new window's hold nor become a fresh press there.
+        let Some(focus_repeat) = self.focus_keymap.key_event_from(
+            window,
+            xev.window as xproto::Window,
+            keycode,
+            state == ElementState::Pressed,
+        ) else { return };
+
         // Update state to track key repeats and determine whether this key was a repeat.
         //
         // The per-press tracker has no history for keys held before focus gain.
@@ -1049,7 +1070,6 @@ impl EventProcessor {
             false
         };
 
-        let focus_repeat = self.focus_keymap.key_event(window, keycode, state == ElementState::Pressed);
         let repeat = repeat || focus_repeat;
 
         // NOTE: When the modifier was captured by the XFilterEvents the modifiers for the modifier

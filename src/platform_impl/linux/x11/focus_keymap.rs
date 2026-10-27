@@ -52,6 +52,19 @@ impl FocusKeymap {
         }
         pressed && was_held
     }
+
+    pub fn key_event_from(
+        &mut self,
+        active: u32,
+        source: u32,
+        keycode: u32,
+        pressed: bool,
+    ) -> Option<bool> {
+        if active != source {
+            return None;
+        }
+        Some(self.key_event(active, keycode, pressed))
+    }
 }
 
 #[cfg(test)]
@@ -146,6 +159,42 @@ mod tests {
         state.cancel_pending();
         assert_eq!(state.keymap_notify(down(N)), None);
         assert!(!state.key_event(A, N, true));
+    }
+
+    #[test]
+    fn pointer_entry_cancels_stale_pending_but_does_not_erase_an_owned_hold() {
+        let mut state = FocusKeymap::default();
+        state.focus_in(A);
+        state.cancel_pending();
+        assert_eq!(state.keymap_notify(down(Y)), None);
+
+        state.focus_in(A);
+        assert_eq!(state.keymap_notify(down(N)), Some(A));
+        state.cancel_pending();
+        assert_eq!(state.keymap_notify([0; 32]), None);
+        assert!(state.key_event(A, N, true));
+    }
+
+    #[test]
+    fn an_unrelated_windows_release_cannot_end_the_active_windows_hold() {
+        let mut state = FocusKeymap::default();
+        state.focus_in(A);
+        state.keymap_notify(down(N));
+        assert_eq!(state.key_event_from(A, B, N, false), None);
+        assert_eq!(state.key_event_from(A, A, N, true), Some(true));
+    }
+
+    #[test]
+    fn a_delayed_old_windows_key_cannot_become_a_fresh_press_in_the_new_window() {
+        let mut state = FocusKeymap::default();
+        state.focus_in(A);
+        state.keymap_notify(down(N));
+        state.focus_out(A);
+        state.focus_in(B);
+        state.keymap_notify([0; 32]);
+        assert_eq!(state.key_event_from(B, A, N, true), None);
+        assert_eq!(state.key_event_from(B, A, N, false), None);
+        assert_eq!(state.key_event_from(B, B, N, true), Some(false));
     }
 
     #[test]
