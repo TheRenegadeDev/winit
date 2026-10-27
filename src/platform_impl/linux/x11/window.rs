@@ -267,6 +267,7 @@ impl UnownedWindow {
                 | EventMask::KEY_PRESS
                 | EventMask::KEY_RELEASE
                 | EventMask::KEYMAP_STATE
+                | EventMask::FOCUS_CHANGE
                 | EventMask::BUTTON_PRESS
                 | EventMask::BUTTON_RELEASE
                 | EventMask::POINTER_MOTION
