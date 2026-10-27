@@ -114,6 +114,7 @@ pub struct UnownedWindow {
     #[allow(dead_code)]
     visual: u32, // never changes
     root: xproto::Window,               // never changes
+    parent: xproto::Window,             // native creation parent, including XEmbed
     #[allow(dead_code)]
     screen_id: i32, // never changes
     selected_cursor: Mutex<SelectedCursor>,
@@ -345,6 +346,7 @@ impl UnownedWindow {
             xwindow: xwindow as xproto::Window,
             visual,
             root,
+            parent,
             screen_id,
             selected_cursor: Default::default(),
             cursor_grabbed_mode: Mutex::new(CursorGrabMode::None),
@@ -1462,8 +1464,7 @@ impl UnownedWindow {
     }
 
     pub(super) fn parent_window(&self) -> xproto::Window {
-        // Explicit native parent for child windows, screen root for top-level windows.
-        self.root
+        self.parent
     }
 
     #[inline]
