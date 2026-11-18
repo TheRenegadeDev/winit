@@ -128,6 +128,64 @@ mod tests {
     }
 
     #[test]
+    fn press_focus_out_focus_in_repeat_release_then_fresh_press() {
+        for key in [N, Y] {
+            for window in [A, B] {
+                let mut state = FocusKeymap::default();
+                state.focus_in(A);
+                assert_eq!(state.keymap_notify([0; 32]), Some(A));
+                assert!(!state.key_event(A, key, true));
+                state.focus_out(A);
+                state.focus_in(window);
+                assert_eq!(state.keymap_notify(down(key)), Some(window));
+                assert!(state.key_event(window, key, true), "the held key remains a repeat");
+                assert!(!state.key_event(window, key, false));
+                assert!(!state.key_event(window, key, true), "release ends the old hold");
+            }
+        }
+    }
+
+    #[test]
+    fn press_focus_out_release_outside_then_return_has_no_stale_repeat() {
+        for key in [N, Y] {
+            let mut state = FocusKeymap::default();
+            state.focus_in(A);
+            assert_eq!(state.keymap_notify([0; 32]), Some(A));
+            assert!(!state.key_event(A, key, true));
+            state.focus_out(A);
+            // The outside release is not delivered to A. Its next focus snapshot is up.
+            state.focus_in(A);
+            assert_eq!(state.keymap_notify([0; 32]), Some(A));
+            assert!(!state.key_event(A, key, true));
+        }
+    }
+
+    #[test]
+    fn two_held_keys_keep_independent_repeat_and_release_state() {
+        // Separate bytes and separate bits in one byte, releasing in either order.
+        for keys in [[N, Y], [Y, N], [N, N + 1], [N + 1, N]] {
+            let mut state = FocusKeymap::default();
+            state.focus_in(A);
+            assert_eq!(state.keymap_notify([0; 32]), Some(A));
+            for key in keys {
+                assert!(!state.key_event(A, key, true));
+            }
+            state.focus_out(A);
+            state.focus_in(B);
+            let mut held = down(keys[0]);
+            held[keys[1] as usize / 8] |= 1 << (keys[1] % 8);
+            assert_eq!(state.keymap_notify(held), Some(B));
+            assert!(state.key_event(B, keys[0], true));
+            assert!(state.key_event(B, keys[1], true));
+            assert!(!state.key_event(B, keys[0], false));
+            assert!(!state.key_event(B, keys[0], true));
+            assert!(state.key_event(B, keys[1], true), "releasing one key keeps the other held");
+            assert!(!state.key_event(B, keys[1], false));
+            assert!(!state.key_event(B, keys[1], true));
+        }
+    }
+
+    #[test]
     fn release_without_any_repeat_allows_the_next_fresh_press() {
         for key in [N, Y] {
             let mut state = FocusKeymap::default();

@@ -1042,12 +1042,11 @@ impl EventProcessor {
             state == ElementState::Pressed,
             windows.len(),
             |source| {
-                windows
-                    .get(&WindowId(source as _))?
-                    .upgrade()
-                    .map(|window| window.parent_window())
+                windows.get(&WindowId(source as _))?.upgrade().map(|window| window.parent_window())
             },
-        ) else { return };
+        ) else {
+            return;
+        };
         drop(windows);
 
         // Update state to track key repeats and determine whether this key was a repeat.
